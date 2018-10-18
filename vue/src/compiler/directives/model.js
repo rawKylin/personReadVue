@@ -68,7 +68,7 @@ export function parseModel(val： string): ModelParseResult{
     if(isStringStart(chr)){
       parseString(chr)
     }else if(chr == 0x5B){
-
+      parseBracket(chr)
     }
   }
 }
