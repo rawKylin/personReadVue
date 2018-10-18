@@ -71,9 +71,24 @@ export function parseModel(val： string): ModelParseResult{
       parseBracket(chr)
     }
   }
+
+  return {
+    exp: val.slice(0, expressionPos),
+    key: val.slice(expressionPos + 1, expressionEndPos)
+  }
 }
 
+function next():number{
+  return str.charCodeAt(++index)
+}
 
+function eof():boolean{
+  return index >= len
+}
+
+function isStringStart(chr: number): boolean{
+  return chr === 0x22 || chr === 0x27//36||39
+}
 
 
 
