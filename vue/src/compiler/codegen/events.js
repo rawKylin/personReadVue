@@ -1,5 +1,5 @@
 const fnExpRE = /^([\w$_]+|\([^)]*?\))\s*=>|^function\s*\(/;
-//     ([a-zA-Z0-9]|())=> | function (
+//     [a-zA-Z0-9]|()=> | function (
 const simplePathRE = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\['[^']*?']|\["[^"]*?"]|\[\d+]|\[[A-Za-z_$][\w$]*])*$/
 
 //按键事件.keycode别名

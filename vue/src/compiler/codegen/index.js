@@ -265,5 +265,182 @@ function genDirectives(el: ASTElement, state: CodegenState): string | void {
 }
 function genInlineTemplate(el: ASTElement, state: CodegenState): ?string {
     const ast = el.children[0]
+    if(process.env.NODE_ENV !== 'production' && (el.children.length !== 1 || ast.type !== 1)){
+        state.warn('Inlien-template components must have exactly one child element.')
+    }
+    if(ast.type === 1){
+        const inlineRenderFns = generate(ast, state.options)
+        return `inlineTemplate:{render: function(){${
+            inlineRenderFns.render
+            }},staticRenderFns:[${
+            inlineRenderFns.staticRenderFns.map(code => `function(){${code}}`).join(',')
+            }]
+        }`
+    }
+}
 
+function genScopedSlots(
+    slots: {[key: string]: ASTElement},
+    state: CodegenState
+): string {
+    return `scopedSlots:_u([${
+        Object.keys(slots).map(key => {
+            return genScopedSlot(key, slots[key], state)
+        }).join(',')
+        }])`
+}
+
+function genScopedSlot(
+    key: string,
+    el: ASTElement,
+    state: CodegenState
+):string {
+    if(el.for && !el.forProcessed){
+        return genForScopedSlot(key, el, state)
+    }
+    const fn = `function(${String(el.slotScope)}){` +
+        `return ${el.tag === 'template' 
+            ? el.if 
+                ? `${el.if}?${genChildren(el, state) || 'undefined'}:undefined`
+                : genChildren(el, state) || 'undefined'
+            : genElement(el, state)
+    }}`
+    return `{key:${key},fn:${fn}}`
+}
+
+function genForScopedSlot(
+    key: string,
+    el: any,
+    state: CodegenState
+): string {
+    const exp = el.for
+    const alias = el.alias
+    const iterator1 = el.iterator1 ? `,${el.iterator1}` : ''
+    const iterator2 = el.iterator2 ? `,${el.iterator2}` : ''
+    el.forProcessed = true
+    return `_l((${exp}),` +
+        `function(${alias}${iterator1}${iterator2}){
+            return ${genScopedSlot(key, el, state)}
+        }`
+        `})`
+}
+
+export function genChildren(
+    el: ASTElement,
+    state: CodegenState,
+    checkSkip?: boolean,
+    altGenElement?: Function,
+    altGenNode?: Function
+): string | void {
+    const children = el.children
+    if (children.length) {
+        const el: any = children[0]
+        if(children.length === 1 && el.for && el.tag !== 'template' && el.tag !== 'slot'){
+            return (altGenElement || genElement)(el, state)
+        }
+        const normalizationType = checkSkip ? getNormalizationType(children, state.maybeComponent)
+            : 0
+        const gen = altGenNode || altGenNode
+        return `[${children.map(c => gen(c, state)).join(',')}]${
+            normalizationType ? `,${normalizationType}` : ''
+            }`
+    }
+}
+
+function getNormalizationType(
+    children: Array<ASTNode>,
+    maybeComponent: (el: ASTElement) => boolean
+): number {
+    let res = 0
+    for(let i = 0; i < children.length; i++){
+        const el: ASTNode = children[i]
+        if(el.type !== 1){
+            continue
+        }
+        if(needsNormalization(el) || (el.ifConditions && el.ifConditions.some(c => needsNormalization(c.block)))){
+            res = 2
+            break
+        }
+        if(maybeComponent(el) || (el.ifConditions && el.ifConditions.some(c => maybeComponent(c.block)))){
+            res = 1
+        }
+    }
+    return res
+}
+
+function needsNormalization(el:ASTElement): boolean {
+    return el.for !== undefined || el.tag === 'template' || el.tag === 'slot'
+}
+
+function genNode(node: ASTNode, state: CodegenState): string {
+    if(node.type === 1){
+        return genElement(node, state)
+    }else if(node.type === 3 && node.isComment){
+        return genComment(node)
+    }else{
+        return genText(node)
+    }
+}
+
+export function genText(text: ASTText | ASTExpression): string {
+    return `_v(${
+        text.type === 2 ? text.expression
+        : transformSpecialNewlines(JSON.stringify(text.text))
+    })`
+}
+
+export function genComment(comment: ASTText): string {
+    return `_e(${JSON.stringify(comment.text)})`
+}
+
+function genSlot(el: ASTElement, state: CodegenState):string {
+    const slotName = el.slotName || '"default"'
+    const children = genChildren(el, state)
+    let res = `_t(${slotName}${children ? `,${children}`: ''})`
+    const attrs = el.attrs && `{${el.attrs.map(a => `${camelize(a.name)}:${a.value}`).join(',')}}`
+    const bind = el.attrsMap['v-bind']
+    if((attrs || bind) && !children){
+        res += `,null`
+    }
+    if(attrs){
+        res += `,${attrs}`
+    }
+    if(bind){
+        res += `${attrs ? '' : ',null'},${bind}`
+    }
+    return res + ')'
+}
+
+function genComponent(
+    componentName: string,
+    el: ASTElement,
+    state: CodegenState
+): string{
+    const children = el.inlineTemplate ? null : genChildren(el, state, true)
+    return `_c(${componentName},${genData(el, state)}${children ? `,${children}`: ''})`
+}
+
+function genProps(props: Array<{name: string, value:any}>): strinh {
+    let res = ''
+    for(let i = 0; i < props.length; i++){
+        const prop = props[i]
+        if(__WEEX__){
+            res += `"${props.name}":${generateValue(prop.value)},`
+        }else{
+            res += `"${prop.name}":${transformSpecialNewlines(prop.value)},`
+        }
+    }
+    return res.slice(0, -1)
+}
+
+function generateValue(value) {
+    if(typeof value === 'string'){
+        return transformSpecialNewlines(value)
+    }
+    return JSON.stringify(value)
+}
+
+function transformSpecialNewlines(text:string): string {
+    return text.replace(/\u2028/g,'\\u2028')//行分隔符
+    .replace(/\u2029/g,'\\u2029')//段分割符
 }
